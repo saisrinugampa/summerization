@@ -1,0 +1,12 @@
+.env
+venv/
+.venv/
+Lib/
+Lib/
+Lib/site-packages/
+Lib/site-packages/
+Lib/
+
+__pycache__/
+.vscode/
+.vscode
