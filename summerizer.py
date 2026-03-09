@@ -1,8 +1,16 @@
 import os
+import json
 from dotenv import load_dotenv
 from openai import OpenAI
+from pydantic import BaseModel, Field, ValidationError
 
 load_dotenv()
+
+class SummaryResponse(BaseModel):
+    summary: str = Field(..., min_length=1)
+    action_items: list[str] = Field(default_factory=list)
+    key_decisions: list[str] = Field(default_factory=list)
+    key_details: list[str] = Field(default_factory=list)
 
 class SummarizationAgent:
     def __init__(self, api_key: str, model: str = "openai/gpt-oss-120b:free"):
@@ -20,13 +28,13 @@ class SummarizationAgent:
         )
         self.model = model
 
-    def summarize(self, text: str, max_tokens: int = 500) -> str:
+    def summarize(self, text: str, max_tokens: int = 500) -> SummaryResponse:
         """
-        Summarizes the provided text using the specified model.
+        Summarizes the provided text and extracts key information in JSON format.
 
         :param text: The long text to summarize.
         :param max_tokens: The maximum length of the summary.
-        :return: The generated summary.
+        :return: A validated SummaryResponse object.
         """
         if not text:
             return "No text provided to summarize."
@@ -39,14 +47,15 @@ class SummarizationAgent:
                         "role": "system",
                         "content": (
                             "You are an expert summarization agent. "
-                            "Your goal is to extract the key points from the provided text "
-                            "and present them in a concise, clear, and objective manner. "
-                            "Ignore irrelevant details and focus on the core message."
+                            "Your goal is to analyze the text and output a JSON object with the following keys: "
+                            "'summary', 'action_items', 'key_decisions', and 'key_details'. "
+                            "Ensure the 'summary' is concise. "
+                            "Provide lists for 'action_items', 'key_decisions', and 'key_details'."
                         )
                     },
                     {
                         "role": "user",
-                        "content": f"Please summarize the following text:\n\n{text}"
+                        "content": f"Please analyze the following text and provide the output in JSON format:\n\n{text}"
                     }
                 ],
                 # OpenRouter specific headers can be passed via extra_headers if needed
@@ -56,12 +65,17 @@ class SummarizationAgent:
                 },
                 max_tokens=max_tokens,
                 temperature=0.5, # Lower temperature for more factual summaries
+                response_format={"type": "json_object"},
             )
             
-            return response.choices[0].message.content.strip()
+            content = response.choices[0].message.content.strip()
+            data = json.loads(content)
+            return SummaryResponse(**data)
 
+        except ValidationError as e:
+            raise ValueError(f"Invalid response format: {e}")
         except Exception as e:
-            return f"An error occurred during summarization: {str(e)}"
+            raise RuntimeError(f"An error occurred during summarization: {str(e)}")
 
 # --- Usage Example ---
 if __name__ == "__main__":
@@ -90,4 +104,4 @@ if __name__ == "__main__":
 
         print("--- Generating Summary ---")
         summary = agent.summarize(long_text)
-        print(summary)
+        print(summary.model_dump_json(indent=2))
